@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>소설 「노새 두 마리」 자기주도 학습 웹앱</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-color: #f1f5f9;
+            color: #1e293b;
+        }
+        /* 암기 모드용 블랭크 스타일 */
+        .blank-mode .keyword-highlight {
+            background-color: #cbd5e1;
+            color: transparent;
+            border-radius: 0.375rem;
+            padding: 0 0.4rem;
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.2s ease;
+            border-bottom: 2px dashed #64748b;
+        }
+        .blank-mode .keyword-highlight:hover {
+            background-color: #94a3b8;
+        }
+        .blank-mode .keyword-highlight.revealed {
+            background-color: #fef08a;
+            color: #854d0e;
+            border-bottom: 2px solid #eab308;
+        }
+        .keyword-highlight {
+            background-color: #fef9c3;
+            color: #854d0e;
+            font-weight: 700;
+            padding: 0.1rem 0.3rem;
+            border-radius: 0.25rem;
+        }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-6px); }
+            75% { transform: translateX(6px); }
+        }
+        .animate-shake {
+            animation: shake 0.3s ease-in-out;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <!-- 1. 초기 접속 비밀번호 모달 (비밀번호: 1234) -->
+    <div id="loginOverlay" class="fixed inset-0 bg-slate-900/95 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div id="loginCard" class="bg-white rounded-3xl max-w-md w-full p-8 shadow-2xl border border-slate-200 text-center space-y-6">
+            <div class="w-16 h-16 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center text-3xl mx-auto shadow-inner">
+                🔐
+            </div>
+            <div>
+                <span class="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-xs font-bold">3학년 국어 · 현대소설</span>
+                <h1 class="text-2xl font-black text-slate-900 mt-2">노새 두 마리 학습실</h1>
+                <p class="text-sm text-slate-500 mt-1">학습을 시작하려면 입장 비밀번호를 입력하세요.</p>
+            </div>
+
+            <form onsubmit="checkPassword(event)" class="space-y-4">
+                <div>
+                    <input type="password" id="passwordInput" maxlength="10" placeholder="비밀번호 입력" 
+                        class="w-full text-center text-2xl tracking-widest font-bold py-3.5 px-4 rounded-2xl border-2 border-slate-200 focus:border-amber-500 focus:outline-none transition bg-slate-50" autofocus>
+                    <p id="loginErrorMsg" class="hidden text-xs font-bold text-rose-600 mt-2">
+                        ❌ 비밀번호가 올바르지 않습니다. 다시 확인해 주세요.
+                    </p>
+                </div>
+                <button type="submit" class="w-full py-3.5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-base shadow-lg transition transform active:scale-98">
+                    학습 시작하기
+                </button>
+            </form>
+            <p class="text-xs text-slate-400">집에서도 스스로 복습할 수 있는 자기주도 학습 웹앱입니다.</p>
+        </div>
+    </div>
+
+    <!-- 2. 상단 헤더 & 탭 내비게이션 -->
+    <header class="bg-slate-900 text-white shadow-lg sticky top-0 z-30">
+        <div class="max-w-5xl mx-auto px-4 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+                <div class="flex items-center gap-2">
+                    <span class="px-2.5 py-0.5 text-xs font-bold bg-amber-500 text-slate-900 rounded-full">자기주도 학습</span>
+                    <span class="text-xs text-slate-400">최일남 작 · 「노새 두 마리」</span>
+                </div>
+                <h1 class="text-xl sm:text-2xl font-extrabold tracking-tight mt-1">노새 두 마리 마스터 클래스</h1>
+            </div>
+
+            <!-- 현재 점수 현황 배지 -->
+            <div class="flex items-center gap-3 bg-slate-800 px-4 py-2 rounded-2xl border border-slate-700 self-start sm:self-center">
+                <div class="text-right">
+                    <div class="text-[11px] text-slate-400">현재 퀴즈 점수 (90점 이상 복습 해금)</div>
+                    <div class="text-base font-black text-amber-400"><span id="headerScore">0</span>점 <span class="text-xs font-normal text-slate-300">/ 100점</span></div>
+                </div>
+                <div id="unlockStatusIcon" class="w-9 h-9 rounded-xl bg-slate-700 flex items-center justify-center text-lg" title="90점 이상 달성 시 탭 2 잠금 해제">
+                    🔒
+                </div>
+            </div>
+        </div>
+
+        <!-- 탭 1 & 탭 2 내비게이션 -->
+        <nav class="bg-slate-800 border-t border-slate-700">
+            <div class="max-w-5xl mx-auto px-4 grid grid-cols-2 gap-2 pt-2">
+                <button onclick="switchTab('tab1')" id="btn-tab1" class="py-3 px-4 rounded-t-xl text-sm sm:text-base font-bold bg-slate-100 text-slate-900 flex items-center justify-center gap-2 transition">
+                    <span>✍️ 탭 1. 핵심 개념 퀴즈</span>
+                </button>
+                <button onclick="switchTab('tab2')" id="btn-tab2" class="py-3 px-4 rounded-t-xl text-sm sm:text-base font-bold bg-slate-700/70 text-slate-400 hover:bg-slate-700 flex items-center justify-center gap-2 transition">
+                    <span id="tab2LockIcon">🔒</span>
+                    <span>📖 탭 2. 시각적 복습 자료</span>
+                </button>
+            </div>
+        </nav>
+    </header>
+
+    <!-- 잠금 안내 알림 토스트 (모달 대신 사용하는 메시지 박스) -->
+    <div id="toastBox" class="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-40 hidden">
+        <div class="bg-slate-900 text-white px-5 py-3.5 rounded-2xl shadow-2xl border border-slate-700 flex items-center gap-3 text-xs sm:text-sm font-medium">
+            <span class="text-amber-400 text-lg">⚠️</span>
+            <span id="toastMessage">탭 1 퀴즈에서 90점 이상을 달성해야 복습 자료를 열람할 수 있습니다!</span>
+        </div>
+    </div>
+
+    <!-- 메인 콘텐츠 영역 -->
+    <main class="flex-1 max-w-5xl w-full mx-auto px-4 py-6 sm:py-8">
+
+        <!-- ========================================================= -->
+        <!-- 탭 1: 학습지 내용 기반 퀴즈 (정답 바로 노출 금지, 힌트 제공) -->
+        <!-- ========================================================= -->
+        <section id="section-tab1" class="space-y-6">
+            <!-- 안내 배너 -->
+            <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div class="space-y-1">
+                    <h2 class="text-base sm:text-lg font-extrabold text-slate-900">학습지 없이 스스로 풀어보는 핵심 퀴즈 (총 10문항)</h2>
+                    <p class="text-xs sm:text-sm text-slate-600">
+                        틀려도 <strong>정답을 바로 알려주지 않습니다.</strong> 제공되는 <span class="text-amber-600 font-bold">💡 힌트</span>를 읽고 스스로 정답을 찾아보세요!
+                    </p>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                    <button onclick="resetQuiz()" class="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition">
+                        🔄 처음부터 다시 풀기
+                    </button>
+                </div>
+            </div>
+
+            <!-- 90점 달성 축하 배너 -->
+            <div id="congratsBanner" class="hidden bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-2xl p-5 shadow-md flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div class="flex items-center gap-3">
+                    <span class="text-3xl">🎉</span>
+                    <div>
+                        <h3 class="font-extrabold text-base sm:text-lg">축하합니다! 90점 이상을 달성했습니다!</h3>
+                        <p class="text-xs sm:text-sm text-emerald-100">이제 상단의 <strong>[탭 2. 시각적 복습 자료]</strong>가 잠금 해제되어 모든 핵심 정리를 볼 수 있습니다.</p>
+                    </div>
+                </div>
+                <button onclick="switchTab('tab2')" class="px-5 py-2.5 rounded-xl bg-white text-emerald-800 font-extrabold text-xs sm:text-sm shadow hover:bg-emerald-50 transition shrink-0">
+                    복습 자료 보러 가기 →
+                </button>
+            </div>
+
+            <!-- 퀴즈 문항 리스트 컨테이너 -->
+            <div id="quizList" class="space-y-5">
+                <!-- JS로 동적 생성 -->
+            </div>
+        </section>
+
+        <!-- ========================================================= -->
+        <!-- 탭 2: 시각적 복습 자료 (90점 이상 달성 시 잠금 해제)          -->
+        <!-- ========================================================= -->
+        <section id="section-tab2" class="hidden space-y-6">
+            <!-- 복습 컨트롤 상단 바 -->
+            <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                    <span class="px-2.5 py-0.5 bg-emerald-100 text-emerald-800 text-xs font-bold rounded-full">🔓 복습 자료 잠금 해제 완료</span>
+                    <h2 class="text-lg sm:text-xl font-extrabold text-slate-900 mt-1">「노새 두 마리」 한눈에 보는 시각적 핵심 정리</h2>
+                    <p class="text-xs text-slate-500 mt-0.5">집에서도 암기 모드를 켜고 노란색 핵심 키워드를 가리며 스스로 점검해 보세요.</p>
+                </div>
+                <button id="toggleBlankBtn" onclick="toggleBlankMode()" class="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-slate-900 hover:bg-slate-800 text-white transition shadow-sm shrink-0">
+                    <span id="blankIcon">👁️</span>
+                    <span id="blankText">암기 모드 켜기</span>
+                </button>
+            </div>
+
+            <div id="blankGuideBanner" class="hidden bg-amber-50 border border-amber-300 rounded-xl px-4 py-2.5 text-center text-xs sm:text-sm text-amber-900 font-medium">
+                💡 <strong>암기 모드 작동 중:</strong> 회색으로 가려진 빈칸을 클릭하면 정답 키워드가 나타납니다!
+            </div>
+
+            <!-- [시각화 카드 1] 작품 기본 구조 & 시점 -->
+            <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 space-y-4">
+                <h3 class="text-base sm:text-lg font-extrabold text-slate-900 flex items-center gap-2 border-b border-slate-100 pb-3">
+                    <span class="w-2 h-5 bg-amber-500 rounded-full"></span>
+                    1. 작품 개관 및 배경 구조
+                </h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="p-4 rounded-xl bg-slate-50 border border-slate-200">
+                        <div class="text-xs font-bold text-slate-400 mb-1">시대 · 공간적 배경</div>
+                        <p class="text-sm leading-relaxed">
+                            급격한 <span class="keyword-highlight" onclick="revealWord(this)">산업화·도시화</span>가 진행되던 <span class="keyword-highlight" onclick="revealWord(this)">1970년대 겨울</span>, 도시 변두리 동네
+                        </p>
+                    </div>
+                    <div class="p-4 rounded-xl bg-slate-50 border border-slate-200">
+                        <div class="text-xs font-bold text-slate-400 mb-1">서술자 및 시점</div>
+                        <p class="text-sm leading-relaxed">
+                            어린아이인 <span class="keyword-highlight" onclick="revealWord(this)">‘나’ (1인칭 관찰자 시점)</span> — 순수한 시선으로 도시 빈민의 비애와 도시인의 이기심을 드러냄.
+                        </p>
+                    </div>
+                    <div class="p-4 rounded-xl bg-amber-50 border border-amber-200">
+                        <div class="text-xs font-bold text-amber-700 mb-1">제목 ‘노새 두 마리’의 상징</div>
+                        <p class="text-sm leading-relaxed text-amber-950">
+                            ① 집을 달아난 진짜 <span class="keyword-highlight" onclick="revealWord(this)">노새</span><br>
+                            ② 고된 노동으로 가족을 부양하는 <span class="keyword-highlight" onclick="revealWord(this)">아버지</span>
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- [시각화 카드 2] 공간과 인물 태도의 대비 다이어그램 -->
+            <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 space-y-4">
+                <h3 class="text-base sm:text-lg font-extrabold text-slate-900 flex items-center gap-2 border-b border-slate-100 pb-3">
+                    <span class="w-2 h-5 bg-sky-500 rounded-full"></span>
+                    2. 골목 하나를 경계로 나뉜 두 동네의 대비
+                </h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="p-5 rounded-2xl bg-stone-100 border border-stone-200 space-y-2">
+                        <div class="flex items-center justify-between">
+                            <span class="font-black text-stone-800 text-base">🏚️ 구동네 (원래 살던 동네)</span>
+                            <span class="px-2.5 py-0.5 bg-stone-200 text-stone-700 rounded-full text-xs font-bold">가난 · 소외</span>
+                        </div>
+                        <ul class="text-xs sm:text-sm text-stone-700 space-y-1.5 list-disc list-inside pt-1">
+                            <li>판잣집, 슬래브 집이 모여 있는 허름한 동네</li>
+                            <li>연탄을 두서너 장씩만 구매함</li>
+                            <li>노새를 늘 봐 왔기에 함부로 대하고 아이들이 괴롭힘</li>
+                            <li>‘나’는 구동네 아이들에게 <span class="keyword-highlight" onclick="revealWord(this)">적개심</span>을 느낌</li>
+                        </ul>
+                    </div>
+
+                    <div class="p-5 rounded-2xl bg-sky-50 border border-sky-200 space-y-2">
+                        <div class="flex items-center justify-between">
+                            <span class="font-black text-sky-900 text-base">🏡 새 동네 (문화 주택 단지)</span>
+                            <span class="px-2.5 py-0.5 bg-sky-200 text-sky-900 rounded-full text-xs font-bold">경제적 여유 · 단절</span>
+                        </div>
+                        <ul class="text-xs sm:text-sm text-sky-900 space-y-1.5 list-disc list-inside pt-1">
+                            <li>이삼 년 전 빈터에 새로 들어선 부유한 동네 (구동네와 교류 거부)</li>
+                            <li>연탄을 한꺼번에 많이 사서 아버지의 배달 일감이 늘어남</li>
+                            <li>노새를 신기해하고 귀여워함 → ‘나’와 아버지가 노새를 <span class="keyword-highlight" onclick="revealWord(this)">자랑스러워함</span></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- [시각화 카드 3] 사건의 흐름 타임라인 (발단 -> 결말) -->
+            <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 space-y-4">
+                <h3 class="text-base sm:text-lg font-extrabold text-slate-900 flex items-center gap-2 border-b border-slate-100 pb-3">
+                    <span class="w-2 h-5 bg-emerald-500 rounded-full"></span>
+                    3. 구성 단계별 핵심 사건 흐름도
+                </h3>
+                <div class="relative border-l-2 border-slate-300 ml-3 space-y-6 py-2">
+                    <!-- 발단 -->
+                    <div class="pl-6 relative">
+                        <span class="w-3.5 h-3.5 rounded-full bg-slate-800 border-2 border-white absolute -left-[8px] top-1"></span>
+                        <div class="text-xs font-bold text-slate-400">STEP 01 · 발단</div>
+                        <h4 class="font-bold text-slate-900 text-sm sm:text-base">동네의 변화와 아버지의 연탄 배달</h4>
+                        <p class="text-xs sm:text-sm text-slate-600 mt-1">구동네 옆에 새 동네(<span class="keyword-highlight" onclick="revealWord(this)">문화 주택</span>)가 들어서고, 구멍가게 물건이 다양해지며 우유·신문 배달부가 나타남. 연탄 주문이 늘어 아버지가 좋아함.</p>
+                    </div>
+                    <!-- 전개 -->
+                    <div class="pl-6 relative">
+                        <span class="w-3.5 h-3.5 rounded-full bg-slate-800 border-2 border-white absolute -left-[8px] top-1"></span>
+                        <div class="text-xs font-bold text-slate-400">STEP 02 · 전개</div>
+                        <h4 class="font-bold text-slate-900 text-sm sm:text-base">노새가 우리 집에 온 사연과 애정</h4>
+                        <p class="text-xs sm:text-sm text-slate-600 mt-1">이 년 전 <span class="keyword-highlight" onclick="revealWord(this)">잔병치레</span>가 잦던 말 대신 노새를 데려옴. 회색빛이던 노새가 연탄 때로 검게 변했으나, ‘나’와 노새는 서로 정을 나누며 <span class="keyword-highlight" onclick="revealWord(this)">감정 교류</span>를 함.</p>
+                    </div>
+                    <!-- 위기 -->
+                    <div class="pl-6 relative">
+                        <span class="w-3.5 h-3.5 rounded-full bg-rose-500 border-2 border-white absolute -left-[8px] top-1"></span>
+                        <div class="text-xs font-bold text-rose-500">STEP 03 · 위기</div>
+                        <h4 class="font-bold text-slate-900 text-sm sm:text-base">살얼음 골목길 사고와 노새의 도주</h4>
+                        <p class="text-xs sm:text-sm text-slate-600 mt-1">연탄 400장을 싣고 가파른 골목을 오르다 <span class="keyword-highlight" onclick="revealWord(this)">살얼음</span>에 미끄러져 마차가 굴러떨어짐. 행인들은 <span class="keyword-highlight" onclick="revealWord(this)">옷이 더러워질까 봐</span> 돕지 않고, 풀려난 노새는 큰길로 달아남.</p>
+                    </div>
+                    <!-- 절정 -->
+                    <div class="pl-6 relative">
+                        <span class="w-3.5 h-3.5 rounded-full bg-amber-500 border-2 border-white absolute -left-[8px] top-1"></span>
+                        <div class="text-xs font-bold text-amber-600">STEP 04 · 절정</div>
+                        <h4 class="font-bold text-slate-900 text-sm sm:text-base">‘나’의 꿈, 동물원, 그리고 대폿집의 다짐</h4>
+                        <p class="text-xs sm:text-sm text-slate-600 mt-1">
+                            ① <span class="keyword-highlight" onclick="revealWord(this)">삼륜차</span> 등장으로 일감이 줄어드는 현실 속에서도 아버지는 마부 일에 자존심을 지킴.<br>
+                            ② ‘나’는 노새가 짐을 벗고 <span class="keyword-highlight" onclick="revealWord(this)">고속 도로</span>까지 질주하는 꿈을 꿈(자유에 대한 갈망).<br>
+                            ③ 동물원 <span class="keyword-highlight" onclick="revealWord(this)">얼룩말</span> 우리 앞에서 아버지와 노새의 닮은 외모를 발견하고, 대폿집에서 아버지는 <span class="keyword-highlight" onclick="revealWord(this)">“이제부터 내가 노새다.”</span>라고 다짐함.
+                        </p>
+                    </div>
+                    <!-- 결말 -->
+                    <div class="pl-6 relative">
+                        <span class="w-3.5 h-3.5 rounded-full bg-slate-900 border-2 border-white absolute -left-[8px] top-1"></span>
+                        <div class="text-xs font-bold text-slate-500">STEP 05 · 결말</div>
+                        <h4 class="font-bold text-slate-900 text-sm sm:text-base">경찰의 방문과 또 한 마리의 노새</h4>
+                        <p class="text-xs sm:text-sm text-slate-600 mt-1">달아난 노새가 사람을 다치게 하고 가게를 부수어 <span class="keyword-highlight" onclick="revealWord(this)">경찰이 아버지를 체포</span>하겠다고 다녀감. 말없이 집을 나가는 아버지를 보며 ‘나’는 <span class="keyword-highlight" onclick="revealWord(this)">또 한 마리의 노새</span>를 떠올리며 뒤쫓아감.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- [시각화 카드 4] 노새 vs 아버지 심층 비교표 -->
+            <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 space-y-4">
+                <h3 class="text-base sm:text-lg font-extrabold text-slate-900 flex items-center gap-2 border-b border-slate-100 pb-3">
+                    <span class="w-2 h-5 bg-indigo-500 rounded-full"></span>
+                    4. 노새와 아버지의 공통점과 차이점 비교
+                </h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse text-xs sm:text-sm">
+                        <thead>
+                            <tr class="bg-slate-100 text-slate-800 border-b border-slate-200">
+                                <th class="p-3 font-extrabold w-1/4">구분</th>
+                                <th class="p-3 font-extrabold w-3/8">🐴 노새</th>
+                                <th class="p-3 font-extrabold w-3/8">👨 아버지</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-200">
+                            <tr>
+                                <td class="p-3 font-bold bg-slate-50 text-slate-700">공통점 (동질성)</td>
+                                <td colspan="2" class="p-3 text-slate-700 leading-relaxed">
+                                    • 길게 째진 눈, 벌름한 코, 큰 귀 등 <strong>외모가 닮음</strong><br>
+                                    • 무거운 연탄을 나르며 고달픈 삶을 살아감<br>
+                                    • 자동차·삼륜차가 늘어나는 <span class="keyword-highlight" onclick="revealWord(this)">산업화 시대의 변화</span>에 뒤처진 소외된 존재임
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-bold bg-rose-50/60 text-rose-800">차이점</td>
+                                <td class="p-3 text-slate-700">고된 노동과 주인을 버리고 현실에서 <span class="keyword-highlight" onclick="revealWord(this)">도망침</span></td>
+                                <td class="p-3 text-slate-700"><span class="keyword-highlight" onclick="revealWord(this)">가족의 생계와 책임감</span> 때문에 고단한 현실에서 도망치지 못함</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- 하단 푸터 -->
+    <footer class="bg-white border-t border-slate-200 py-4 px-4 text-center text-xs text-slate-400">
+        최일남 「노새 두 마리」 자기주도 학습 웹앱 · 90점 이상 달성 시 시각적 복습 자료 개방
+    </footer>
+
+    <script>
+        // ==========================================
+        // 1. 초기 접속 비밀번호 검증 (비밀번호: 1234)
+        // ==========================================
+        function checkPassword(e) {
+            e.preventDefault();
+            const input = document.getElementById('passwordInput').value.trim();
+            const errorMsg = document.getElementById('loginErrorMsg');
+            const loginCard = document.getElementById('loginCard');
+
+            if (input === '1234') {
+                document.getElementById('loginOverlay').classList.add('hidden');
+            } else {
+                errorMsg.classList.remove('hidden');
+                loginCard.classList.remove('animate-shake');
+                void loginCard.offsetWidth; // 리플로우 강제 실행으로 애니메이션 재시작
+                loginCard.classList.add('animate-shake');
+                document.getElementById('passwordInput').value = '';
+                document.getElementById('passwordInput').focus();
+            }
+        }
+
+        // ==========================================
+        // 2. 퀴즈 데이터 (학습지 전체 내용 기반 10문항, 100점 만점)
+        //    - 정답 바로 공개 금지 -> 사고 유도형 힌트 제공
+        // ==========================================
+        const quizQuestions = [
+            {
+                id: 1,
+                question: "이 소설의 시대적·공간적 배경과 서술 시점에 대한 설명으로 가장 적절한 것은?",
+                options: [
+                    "1990년대 농촌을 배경으로 전지적 작가가 아버지의 심리를 직접 서술한다.",
+                    "1970년대 급격한 산업화·도시화가 진행되던 도시 변두리 동네가 배경이며, 어린아이인 ‘나’가 1인칭 관찰자 시점으로 서술한다.",
+                    "일제 강점기 경성을 배경으로 새 동네 주민이 구동네 사람들을 관찰하여 서술한다.",
+                    "1970년대 대도시 중심가를 배경으로 아버지가 1인칭 주인공이 되어 자신의 삶을 고백한다."
+                ],
+                answer: 1,
+                hint: "연탄 마차를 끌던 시기는 산업화가 진행되던 1970년대이며, 서술자는 아버지의 연탄 배달을 돕고 노새를 돌보는 어린 아들입니다."
+            },
+            {
+                id: 2,
+                question: "발단에서 이삼 년 전부터 동네에 ‘새 동네’가 들어서면서 나타난 변화로 알맞지 않은 것은?",
+                options: [
+                    "빈터에 문화 주택들이 들어서면서 구동네와 골목 하나를 경계로 나뉘었다.",
+                    "구멍가게에 음료수 병, 아이스크림, 귤 상자 등 다양한 상품이 진열되었다.",
+                    "새 동네 사람들이 연탄을 한꺼번에 많이 사서 아버지의 일감이 줄어들었다.",
+                    "우유 배달부, 신문 배달부가 나타나고 청소부가 골목 안 쓰레기까지 치웠다."
+                ],
+                answer: 2,
+                hint: "구동네 사람들은 연탄을 두서너 장씩만 샀지만, 새 동네 사람들은 한꺼번에 많이 샀기 때문에 아버지는 오히려 좋아했습니다."
+            },
+            {
+                id: 3,
+                question: "노새를 대하는 ‘구동네 사람들’과 ‘새 동네 사람들’의 태도 차이에 대한 설명으로 옳은 것은?",
+                options: [
+                    "구동네 사람들은 노새를 귀하게 여겼고, 새 동네 사람들은 노새를 미워했다.",
+                    "구동네 아이들은 노새를 괴롭히며 함부로 대했고, 새 동네 아이들은 노새를 신기해하고 칭찬했다.",
+                    "구동네와 새 동네 사람들 모두 노새에게 무관심하여 아무도 쳐다보지 않았다.",
+                    "새 동네 사람들은 노새가 동네를 더럽힌다며 구동네 사람들과 크게 다투었다."
+                ],
+                answer: 1,
+                hint: "구동네 사람들은 노새를 늘 봐 왔기 때문에 함부로 대했지만, 새 동네 사람들은 노새를 볼 기회가 흔치 않아 신기해하고 귀여워했습니다."
+            },
+            {
+                id: 4,
+                question: "전개 부분에서 이 년 전 아버지가 원래 부리던 ‘말’을 ‘노새’로 바꾼 까닭은 무엇인가?",
+                options: [
+                    "노새가 말보다 몸집이 훨씬 크고 힘이 세 보였기 때문에",
+                    "말의 눈이 자주 짓무르고 뒷다리 상처가 가시지 않는 등 잔병치레가 잦았기 때문에",
+                    "할머니와 어머니, 큰형이 노새로 바꾸자고 적극적으로 권유했기 때문에",
+                    "새 동네 사람들이 말 대신 노새를 데려오라고 요구했기 때문에"
+                ],
+                answer: 1,
+                hint: "노새의 첫인상은 오히려 비리비리하고 약해 보여 가족들이 반대했지만, 원래 부리던 말은 건강이 좋지 않았습니다."
+            },
+            {
+                id: 5,
+                question: "위기 단계에서 연탄 사백 장을 실은 마차가 가파른 골목길에서 미끄러졌을 때, 지나가던 행인들의 태도가 보여주는 의미는?",
+                options: [
+                    "이웃의 어려움을 외면하지 않고 함께 돕는 따뜻한 공동체 정신",
+                    "자신의 옷이 연탄 가루로 더러워질까 봐 구경만 하는 도시인들의 이기적이고 메마른 인정",
+                    "노새가 다칠까 봐 멀리서 안전을 지켜보는 신중한 태도",
+                    "연탄 배달 일에 익숙하지 않아 어떻게 도울지 몰라 당황하는 모습"
+                ],
+                answer: 1,
+                hint: "사람들은 아버지와 ‘나’가 쩔쩔매는 모습을 흥밋거리로 구경만 할 뿐, 연탄 때가 묻을까 봐 아무도 달라붙어 밀어주지 않았습니다."
+            },
+            {
+                id: 6,
+                question: "절정에서 아버지가 “휘발유 한 방울 안 나오는 나라에서 자동차만 많으면 뭘 해.”라고 말한 뒤에 숨은 심리로 가장 적절한 것은?",
+                options: [
+                    "환경 오염을 걱정하여 자가용 이용을 줄이자는 선구적인 의식",
+                    "삼륜차와 자동차가 늘어나는 현실 속에서 평생 해온 마부 일에 대한 자존심과 시대 변화를 인정하지 않으려는 오기",
+                    "돈을 많이 벌어서 곧 최신형 삼륜차를 구입하겠다는 기대감",
+                    "휘발유 가격이 내려가면 마차 대신 자동차를 운전하겠다는 계획"
+                ],
+                answer: 1,
+                hint: "산업화로 인해 삼륜차가 등장하면서 아버지의 일감은 점점 줄어들고 있었고, 아버지는 자신의 직업이 사라져 가는 현실을 쉽게 받아들이지 못했습니다."
+            },
+            {
+                id: 7,
+                question: "절정에서 ‘나’가 꾼 꿈속에서 노새가 신호등을 무시하고 한강 다리를 건너 고속 도로까지 거침없이 질주하는 장면이 상징하는 바는?",
+                options: [
+                    "노새가 교통법규를 어겨 경찰에 체포될 것이라는 불길한 예감",
+                    "무거운 짐과 고단한 현실에서 벗어나 자유롭게 살고 싶은 도시 빈민의 욕망과 희망",
+                    "노새가 고향인 시골 농장으로 되돌아가고 싶어 하는 귀소 본능",
+                    "아버지가 고속 도로 휴게소에서 새로운 직업을 찾게 될 것이라는 암시"
+                ],
+                answer: 1,
+                hint: "현실의 노새는 무거운 연탄 짐을 지고 가파른 골목을 힘겹게 오르지만, 꿈속의 노새는 연탄 짐을 벗어던지고 아무런 장애물 없이 달립니다."
+            },
+            {
+                id: 8,
+                question: "다음 날 노새를 찾아 헤매던 ‘나’가 아버지와 노새의 동질성을 강하게 인식하게 된 장소와 대상은?",
+                options: [
+                    "구멍가게 앞의 소주병",
+                    "동물원 우리 앞의 얼룩말",
+                    "새 동네 골목의 삼륜차",
+                    "큰길 네거리의 신호등"
+                ],
+                answer: 1,
+                hint: "해가 질 무렵 무심코 들어간 동물원에서 아버지가 발을 멈춘 곳은 말과 비슷하게 생긴 줄무늬 동물 앞이었습니다."
+            },
+            {
+                id: 9,
+                question: "동물원을 나온 뒤 대폿집에서 술을 마시던 아버지가 “이제부터 내가 노새다.”라고 말한 의도로 가장 적절한 것은?",
+                options: [
+                    "이제 연탄 배달 일을 완전히 그만두고 쉬겠다는 선언",
+                    "노새를 잃어버린 절망감을 딛고, 자신이 노새가 되어서라도 끝까지 가족의 생계를 책임지겠다는 가장의 의지",
+                    "도망친 노새를 대신할 다른 동물을 사 오겠다는 약속",
+                    "‘나’에게 앞으로 연탄 마차를 혼자 끌라고 지시하는 말"
+                ],
+                answer: 1,
+                hint: "노새는 고된 일을 버리고 도망쳤지만, 아버지는 가족을 먹여 살려야 하는 무거운 책임감 때문에 현실에서 도망칠 수 없었습니다."
+            },
+            {
+                id: 10,
+                question: "결말에서 말없이 집을 나가는 아버지를 보며 ‘나’가 떠올린 ‘또 한 마리의 노새’가 의미하는 대상과 작가의 태도는?",
+                options: [
+                    "경찰관을 의미하며, 법 집행의 엄격함을 강조하고 있다.",
+                    "급격한 산업화·도시화 과정에서 소외되고 고단한 삶을 살아가는 ‘아버지’를 의미하며, 소외 계층에 대한 연민을 드러낸다.",
+                    "새로 사 온 어린 노새를 의미하며, 가난을 극복한 희망찬 미래를 보여 준다.",
+                    "집을 나간 큰형을 의미하며, 가족 간의 갈등이 심화됨을 나타낸다."
+                ],
+                answer: 1,
+                hint: "제목이 ‘노새 한 마리’가 아니라 ‘노새 두 마리’인 이유를 생각해 보세요. 한 마리는 달아난 진짜 노새이고, 다른 한 마리는 누구일까요?"
+            }
+        ];
+
+        // 각 문항별 상태 관리: { solved: boolean, selectedWrong: number[], showHint: boolean }
+        let quizState = {};
+        let currentScore = 0;
+        let isTab2Unlocked = false;
+
+        function initQuizState() {
+            quizState = {};
+            quizQuestions.forEach(q => {
+                quizState[q.id] = {
+                    solved: false,
+                    wrongIndices: [],
+                    showHint: false
+                };
+            });
+            currentScore = 0;
+            updateScoreUI();
+        }
+
+        function renderQuiz() {
+            const container = document.getElementById('quizList');
+            container.innerHTML = '';
+
+            quizQuestions.forEach((q, idx) => {
+                const state = quizState[q.id];
+                const card = document.createElement('div');
+                card.className = `bg-white rounded-2xl p-5 sm:p-6 shadow-sm border transition ${
+                    state.solved ? 'border-emerald-300 bg-emerald-50/20' : 'border-slate-200'
+                }`;
+
+                // 상단 문항 번호 및 힌트 버튼
+                const headerDiv = document.createElement('div');
+                headerDiv.className = 'flex items-start justify-between gap-3 mb-4';
+                headerDiv.innerHTML = `
+                    <div class="flex items-start gap-2.5">
+                        <span class="px-2.5 py-1 rounded-lg text-xs font-black shrink-0 ${
+                            state.solved ? 'bg-emerald-500 text-white' : 'bg-slate-900 text-white'
+                        }">Q${idx + 1}</span>
+                        <h3 class="font-bold text-sm sm:text-base text-slate-900 leading-snug">${q.question}</h3>
+                    </div>
+                    <button onclick="toggleHint(${q.id})" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-100 hover:bg-amber-200 text-amber-800 shrink-0 transition">
+                        💡 힌트 보기
+                    </button>
+                `;
+                card.appendChild(headerDiv);
+
+                // 힌트 박스 (힌트 버튼을 눌렀거나 오답을 선택했을 때 자동 표시)
+                if (state.showHint) {
+                    const hintBox = document.createElement('div');
+                    hintBox.className = 'mb-4 p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs sm:text-sm text-amber-900 flex items-start gap-2';
+                    hintBox.innerHTML = `
+                        <span class="text-base shrink-0">💡</span>
+                        <div><strong>생각해 볼 힌트:</strong> ${q.hint}</div>
+                    `;
+                    card.appendChild(hintBox);
+                }
+
+                // 선택지 리스트
+                const optionsDiv = document.createElement('div');
+                optionsDiv.className = 'space-y-2.5';
+
+                q.options.forEach((optText, optIdx) => {
+                    const isWrong = state.wrongIndices.includes(optIdx);
+                    const isCorrectChoice = state.solved && optIdx === q.answer;
+
+                    const btn = document.createElement('button');
+                    btn.className = 'w-full text-left px-4 py-3 rounded-xl text-xs sm:text-sm border transition flex items-center justify-between gap-2 ';
+
+                    if (isCorrectChoice) {
+                        btn.className += 'bg-emerald-100 border-emerald-500 text-emerald-950 font-bold';
+                    } else if (isWrong) {
+                        btn.className += 'bg-rose-50 border-rose-300 text-rose-700 line-through opacity-75 cursor-not-allowed';
+                    } else if (state.solved) {
+                        btn.className += 'bg-slate-50 border-slate-200 text-slate-400 cursor-default';
+                    } else {
+                        btn.className += 'bg-white border-slate-200 hover:border-slate-400 hover:bg-slate-50 text-slate-800';
+                    }
+
+                    btn.innerHTML = `
+                        <span>${optIdx + 1}. ${optText}</span>
+                        <span class="shrink-0 font-bold text-xs">
+                            ${isCorrectChoice ? '⭕ 정답!' : isWrong ? '❌ 다시 생각해 보세요' : ''}
+                        </span>
+                    `;
+
+                    btn.onclick = () => handleOptionClick(q.id, optIdx);
+                    optionsDiv.appendChild(btn);
+                });
+
+                card.appendChild(optionsDiv);
+                container.appendChild(card);
+            });
+        }
+
+        function toggleHint(qId) {
+            quizState[qId].showHint = !quizState[qId].showHint;
+            renderQuiz();
+        }
+
+        function handleOptionClick(qId, optIdx) {
+            const state = quizState[qId];
+            if (state.solved || state.wrongIndices.includes(optIdx)) return;
+
+            const questionObj = quizQuestions.find(item => item.id === qId);
+
+            if (optIdx === questionObj.answer) {
+                // 정답 처리
+                state.solved = true;
+                currentScore += 10;
+                updateScoreUI();
+            } else {
+                // 오답 처리: 정답을 바로 알려주지 않고 힌트를 자동으로 열어줌
+                state.wrongIndices.push(optIdx);
+                state.showHint = true;
+                showToast("아쉽네요! 정답을 바로 알려드리지 않아요. 💡 힌트를 읽고 다시 골라보세요!");
+            }
+
+            renderQuiz();
+        }
+
+        function updateScoreUI() {
+            document.getElementById('headerScore').textContent = currentScore;
+
+            if (currentScore >= 90 && !isTab2Unlocked) {
+                isTab2Unlocked = true;
+                document.getElementById('unlockStatusIcon').textContent = '🔓';
+                document.getElementById('unlockStatusIcon').className = 'w-9 h-9 rounded-xl bg-emerald-500 text-white flex items-center justify-center text-lg shadow';
+                document.getElementById('tab2LockIcon').textContent = '🔓';
+                
+                const tab2Btn = document.getElementById('btn-tab2');
+                tab2Btn.classList.remove('text-slate-400');
+                tab2Btn.classList.add('text-emerald-300');
+
+                document.getElementById('congratsBanner').classList.remove('hidden');
+                showToast("🎉 90점 이상 달성! [탭 2. 시각적 복습 자료]가 잠금 해제되었습니다!");
+            }
+        }
+
+        function resetQuiz() {
+            initQuizState();
+            renderQuiz();
+            showToast("퀴즈가 초기화되었습니다. 다시 도전해 보세요!");
+        }
+
+        // ==========================================
+        // 3. 탭 전환 (탭 2는 90점 이상일 때만 입장 가능)
+        // ==========================================
+        function switchTab(tabName) {
+            if (tabName === 'tab2' && !isTab2Unlocked) {
+                showToast(`🔒 현재 점수는 ${currentScore}점입니다. 퀴즈에서 90점 이상을 맞아야 복습 자료를 볼 수 있어요!`);
+                return;
+            }
+
+            const tab1Sec = document.getElementById('section-tab1');
+            const tab2Sec = document.getElementById('section-tab2');
+            const btn1 = document.getElementById('btn-tab1');
+            const btn2 = document.getElementById('btn-tab2');
+
+            if (tabName === 'tab1') {
+                tab1Sec.classList.remove('hidden');
+                tab2Sec.classList.add('hidden');
+
+                btn1.className = 'py-3 px-4 rounded-t-xl text-sm sm:text-base font-bold bg-slate-100 text-slate-900 flex items-center justify-center gap-2 transition';
+                btn2.className = `py-3 px-4 rounded-t-xl text-sm sm:text-base font-bold bg-slate-700/70 ${isTab2Unlocked ? 'text-emerald-300' : 'text-slate-400'} hover:bg-slate-700 flex items-center justify-center gap-2 transition`;
+            } else {
+                tab1Sec.classList.add('hidden');
+                tab2Sec.classList.remove('hidden');
+
+                btn2.className = 'py-3 px-4 rounded-t-xl text-sm sm:text-base font-bold bg-slate-100 text-slate-900 flex items-center justify-center gap-2 transition';
+                btn1.className = 'py-3 px-4 rounded-t-xl text-sm sm:text-base font-bold bg-slate-700/70 text-slate-300 hover:bg-slate-700 flex items-center justify-center gap-2 transition';
+            }
+        }
+
+        // ==========================================
+        // 4. 탭 2 복습 자료용 암기 모드 (빈칸 가리기)
+        // ==========================================
+        let isBlankMode = false;
+
+        function toggleBlankMode() {
+            isBlankMode = !isBlankMode;
+            const body = document.body;
+            const btn = document.getElementById('toggleBlankBtn');
+            const text = document.getElementById('blankText');
+            const icon = document.getElementById('blankIcon');
+            const banner = document.getElementById('blankGuideBanner');
+
+            if (isBlankMode) {
+                body.classList.add('blank-mode');
+                btn.classList.remove('bg-slate-900');
+                btn.classList.add('bg-amber-600');
+                text.textContent = '암기 모드 끄기';
+                icon.textContent = '🙈';
+                banner.classList.remove('hidden');
+                document.querySelectorAll('.keyword-highlight').forEach(el => el.classList.remove('revealed'));
+            } else {
+                body.classList.remove('blank-mode');
+                btn.classList.add('bg-slate-900');
+                btn.classList.remove('bg-amber-600');
+                text.textContent = '암기 모드 켜기';
+                icon.textContent = '👁️';
+                banner.classList.add('hidden');
+            }
+        }
+
+        function revealWord(el) {
+            if (isBlankMode) {
+                el.classList.toggle('revealed');
+            }
+        }
+
+        // ==========================================
+        // 5. 커스텀 알림 토스트 메시지 (alert 대체)
+        // ==========================================
+        let toastTimer = null;
+        function showToast(msg) {
+            const box = document.getElementById('toastBox');
+            const msgEl = document.getElementById('toastMessage');
+            msgEl.textContent = msg;
+            box.classList.remove('hidden');
+
+            if (toastTimer) clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => {
+                box.classList.add('hidden');
+            }, 3500);
+        }
+
+        // 초기 실행
+        window.onload = () => {
+            initQuizState();
+            renderQuiz();
+        };
+    </script>
+</body>
+</html>
