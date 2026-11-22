@@ -557,7 +557,7 @@
         // 0. 구글 스프레드시트 Apps Script 웹 앱 URL 설정
         // 배포 후 발급받은 URL을 아래 따옴표 안에 직접 넣어두시면 학생들이 별도 설정 없이 바로 접속합니다.
         // ==========================================
-        const DEFAULT_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyGG5-HBRfSNYRf9j27-a1nUCrSpa1jobvCV-40Oc_1HMBznsqYa5R0daubXl1O7-Ad/exec"; 
+        const DEFAULT_APPS_SCRIPT_URL = ""; 
 
         // 학생 개인정보는 DOM이나 localStorage에 절대 저장하지 않고, 오직 DB 전송용 비공개 클로저로만 유지
         const StudentSession = (() => {
@@ -640,6 +640,65 @@
             const scriptUrl = getScriptUrl();
             if (!scriptUrl) {
                 // URL 미연결 시 로컬 학습 모드로 입장
+                document.getElementById('loginOverlay').classList.add('hidden');
+                document.getElementById('syncIndicator').textContent = '로컬 모드';
+                showToast("✔ 신원확인 완료! (스프레드시트 URL 미연결 상태이므로 기기 내 학습 모드로 실행됩니다)");
+                return;
+            }
+
+            // Apps Script DB로 재접속 신원확인 요청 (개인정보는 반환받지 않고 점수/통과여부만 조회)
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span>신원 확인 중...</span>';
+
+            try {
+                const res = await fetch(scriptUrl, {
+                    method: "POST",
+                    headers: { "Content-Type": "text/plain;charset=utf-8" },
+                    body: StudentSession.getPayload({ action: "login" })
+                });
+                const data = await res.json();
+
+                document.getElementById('loginOverlay').classList.add('hidden');
+                document.getElementById('syncIndicator').textContent = 'DB 연결됨';
+
+                if (data && data.status === "ok") {
+                    const savedScore = Number(data.score) || 0;
+                    if (savedScore > 0) {
+                        currentScore = savedScore;
+                        updateScoreUI();
+                    }
+                    if (data.passed || savedScore >= 90) {
+                        isTab2Unlocked = true;
+                        document.getElementById('unlockStatusIcon').textContent = '🔓';
+                        document.getElementById('tab2LockIcon').textContent = '🔓';
+                        document.getElementById('congratsBanner').classList.remove('hidden');
+                        showToast(`✔ 신원확인 완료! 이전 통과 기록(${savedScore}점)이 확인되어 복습 탭이 열렸습니다.`);
+                    } else if (data.isExisting) {
+                        showToast(`✔ 재접속 신원확인 완료! 이어서 퀴즈를 풀고 결과를 전송해 주세요.`);
+                    } else {
+                        showToast("✔ 신규 학습자 등록 완료! 90점 이상 달성 후 교사에게 결과를 전송해 주세요.");
+                    }
+                }
+            } catch (err) {
+                document.getElementById('loginOverlay').classList.add('hidden');
+                document.getElementById('syncIndicator').textContent = '오프라인 모드';
+                showToast("⚠ 서버 연결이 지연되어 오프라인 모드로 먼저 입장합니다.");
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<span>신원확인 및 입장하기</span>';
+            }
+        }
+
+        function showLoginError(msg) {
+            const errorMsg = document.getElementById('loginErrorMsg');
+            const loginCard = document.getElementById('loginCard');
+            errorMsg.textContent = msg;
+            errorMsg.classList.remove('hidden');
+            loginCard.classList.remove('animate-shake');
+            void loginCard.offsetWidth;
+            loginCard.classList.add('animate-shake');
+        }
+
         // 퀴즈 점수를 스프레드시트(C열: 퀴즈점수, D열: 통과여부)에 전송하는 함수
         async function syncScoreToSheet(score, isFinalSubmit = false) {
             const scriptUrl = getScriptUrl();
